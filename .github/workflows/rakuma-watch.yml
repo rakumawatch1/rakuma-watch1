@@ -94,30 +94,43 @@ jobs:
             if (!t.keyword) continue;
 
             const searchUrl =
-              `https://fril.jp/s?query=${encodeURIComponent(t.keyword)}&sort=created_at&order=desc`;
+              `https://fril.jp/s?order=desc&query=${encodeURIComponent(t.keyword)}&sort=created_at`;
 
             console.log(`🔎 Checking Rakuma: ${t.name}`);
             console.log(searchUrl);
 
             try {
               await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
-              await page.waitForTimeout(4000);
+              await page.waitForTimeout(5000);
             } catch (e) {
               console.log(`⚠️ ${t.name}: ページ遷移エラー (${e?.message || e})`);
               continue;
             }
 
             const item = await page.evaluate(() => {
-              const links = [...document.querySelectorAll('a[href*="/item/"]')];
+              const links = [
+                ...document.querySelectorAll('a[href*="item.fril.jp"]'),
+                ...document.querySelectorAll('a[href*="/item/"]'),
+                ...document.querySelectorAll('a[href*="/item"]')
+              ];
 
               for (const a of links) {
                 const href = a.href;
-                const blockText = a.innerText || a.closest('div')?.innerText || '';
+                if (!href) continue;
 
+                let block = a;
+                for (let i = 0; i < 5; i++) {
+                  if (!block.parentElement) break;
+                  const txt = block.innerText || '';
+                  if (/¥\s?[\d,]+/.test(txt)) break;
+                  block = block.parentElement;
+                }
+
+                const blockText = block.innerText || a.innerText || '';
                 const priceMatch = blockText.match(/¥\s?([\d,]+)/);
-                if (!href || !priceMatch) continue;
+                if (!priceMatch) continue;
 
-                const id = href.split('/item/')[1]?.split(/[?#/]/)[0] || href;
+                const id = href.split('/').filter(Boolean).pop()?.split(/[?#]/)[0] || href;
                 const price = parseInt(priceMatch[1].replace(/,/g, ''), 10);
 
                 return {
@@ -135,6 +148,8 @@ jobs:
               console.log(`⚠️ ${t.name}: ヒット0件 or 取得失敗`);
               continue;
             }
+
+            console.log(`✅ 取得成功: ${t.name} ¥${item.price} ${item.url}`);
 
             const isNew = seen[t.name] !== item.id;
 
